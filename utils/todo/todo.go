@@ -56,7 +56,7 @@ func Add(w http.ResponseWriter, r *http.Request) {
 
 	// Check for empty value otherwise insert data to db
 	if todo == "" {
-		fmt.Fprintf(w, "New task not found, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
+		fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
 	} else {
 		// Connect to db
 		db, err := sql.Open("mysql", DbConn())
@@ -75,7 +75,7 @@ func Add(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Execute statement
-		_, err = stmt.Exec("2", todo, 0)
+		_, err = stmt.Exec(2, todo, 0)
 		if err != nil {
 			panic(err.Error())
 		}
@@ -88,7 +88,66 @@ func Add(w http.ResponseWriter, r *http.Request) {
 
 // Mark a task as completed in list
 func Mark(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Mark.")
+	// Extract value of todo key from request param
+	todo := r.URL.Query().Get("todo")
+	is_completed := r.URL.Query().Get("is_completed")
+
+	// Check for empty value otherwise edit data in db
+	if todo == "" {
+		fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
+	} else {
+		// Connect to db
+		db, err := sql.Open("mysql", DbConn())
+
+		if err != nil {
+			fmt.Fprintf(w, "An error occured when connecting to database.")
+			return
+		}
+
+		defer db.Close()
+
+		// Query data to check if the data exist then only we proceed to edit it
+		slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
+		if err != nil {
+			panic(err.Error())
+		}
+
+		defer slt_stmt.Close()
+
+		rows, err := slt_stmt.Query(2, todo)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		defer rows.Close()
+
+		var length int
+		for rows.Next() {
+			err := rows.Scan(&length)
+			if err != nil {
+				panic(err.Error())
+			}
+			if length > 0 {
+				// Prepare statement
+				stmt, err := db.Prepare("UPDATE todo_list SET is_completed = ? WHERE user_id = ? AND todo = ?")
+				if err != nil {
+					panic(err.Error())
+				}
+
+				// Execute statement
+				_, err = stmt.Exec(is_completed, 2, todo)
+				if err != nil {
+					panic(err.Error())
+				}
+
+				defer stmt.Close()
+
+				fmt.Fprintf(w, "%s in your TODO-list has been updated to %s.\n", todo, is_completed)
+			} else {
+				fmt.Fprintf(w, "%s is not in your TODO-list.\n", todo)
+			}
+		}
+	}
 }
 
 // Delete task from list
@@ -96,7 +155,7 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 	// Extract value of todo key from request param
 	todo := r.URL.Query().Get("todo")
 
-	// Check for empty value otherwise insert data to db
+	// Check for empty value otherwise delete data to db
 	if todo == "" {
 		fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
 	} else {
