@@ -8,11 +8,13 @@ import (
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, World!")
+	fmt.Fprintf(w, "Please login to gain access to the server.\n")
+	fmt.Fprintf(w, "You can use http://host:port/Login?username={your_username}&password={your_password} to get the authentication tokens that can be passed in via Authorization header or as part of the POST body.\n")
 }
 
 func initHttpRequests() {
 	http.HandleFunc("/", handler)
+	http.HandleFunc("/Login", log.SignIn)
 	http.HandleFunc("/List", todo.List)
 	http.HandleFunc("/Add", todo.Add)
 	http.HandleFunc("/Mark-complete", todo.Mark)
@@ -21,8 +23,5 @@ func initHttpRequests() {
 }
 
 func main() {
-	test := log.SignIn(1, 2)
-	fmt.Println(test)
-
 	initHttpRequests()
 }
