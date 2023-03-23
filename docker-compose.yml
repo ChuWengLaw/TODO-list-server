@@ -8,10 +8,11 @@ services:
       - db
   db:
     image: fluffypyjamas/todo-db:demo
+    container_name: todoDB
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
-      MYSQL_DATABASE: todo
       MYSQL_USER: user
+      MYSQL_ROOT_PASSWORD: 123456
       MYSQL_PASSWORD: 123456
+      MYSQL_DATABASE: todo
     ports:
       - "3306:3306"

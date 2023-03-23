@@ -226,8 +226,10 @@ func authorizeUser(w http.ResponseWriter, code string) {
 		googleAuth(w, gg_conf, code)
 	} else if method == "2" {
 		facebookAuth(w, fb_conf, code)
-	} else {
+	} else if method == "3" {
 		githubAuth(w, git_conf, code)
+	} else {
+		fmt.Fprintf(w, "Please select a valid authentication method: 1. Google, 2. Facebook, 3. GitHub\n")
 	}
 }
 
