@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	d "server/utils/db_setting"
+	log "server/utils/login"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -17,198 +18,214 @@ func DbConn() string {
 
 // List all user's tasks
 func List(w http.ResponseWriter, r *http.Request) {
-	// Connect to db
-	db, err := sql.Open("mysql", DbConn())
+	if log.IsAuth {
+		// Connect to db
+		db, err := sql.Open("mysql", DbConn())
 
-	if err != nil {
-		fmt.Fprintf(w, "An error occured when connecting to database.")
-		return
-	}
+		if err != nil {
+			fmt.Fprintf(w, "An error occured when connecting to database.")
+			return
+		}
 
-	defer db.Close()
+		defer db.Close()
 
-	// Query data
-	rows, err := db.Query("SELECT * FROM todo_list")
-	if err != nil {
-		panic(err.Error())
-	}
-
-	defer rows.Close()
-
-	// Extract data
-	var id int
-	var user_id int
-	var todo string
-	var is_completed int
-	for rows.Next() {
-		err := rows.Scan(&id, &user_id, &todo, &is_completed)
+		// Query data
+		rows, err := db.Query("SELECT * FROM todo_list")
 		if err != nil {
 			panic(err.Error())
 		}
-		fmt.Fprintf(w, "id: %d, user_id: %d, todo: %s, is_completed: %d\n", id, user_id, todo, is_completed)
+
+		defer rows.Close()
+
+		// Extract data
+		var id int
+		var user_id int
+		var todo string
+		var is_completed int
+		for rows.Next() {
+			err := rows.Scan(&id, &user_id, &todo, &is_completed)
+			if err != nil {
+				panic(err.Error())
+			}
+			fmt.Fprintf(w, "id: %d, user_id: %d, todo: %s, is_completed: %d\n", id, user_id, todo, is_completed)
+		}
+	} else {
+		log.AuthMsg(w)
 	}
 }
 
 // Add task to list
 func Add(w http.ResponseWriter, r *http.Request) {
-	// Extract value of todo key from request param
-	todo := r.URL.Query().Get("todo")
+	if log.IsAuth {
+		// Extract value of todo key from request param
+		todo := r.URL.Query().Get("todo")
 
-	// Check for empty value otherwise insert data to db
-	if todo == "" {
-		fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
+		// Check for empty value otherwise insert data to db
+		if todo == "" {
+			fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
+		} else {
+			// Connect to db
+			db, err := sql.Open("mysql", DbConn())
+
+			if err != nil {
+				fmt.Fprintf(w, "An error occured when connecting to database.")
+				return
+			}
+
+			defer db.Close()
+
+			// Prepare statement
+			stmt, err := db.Prepare("INSERT INTO todo_list(user_id, todo, is_completed) VALUES(?, ?, ?)")
+			if err != nil {
+				panic(err.Error())
+			}
+
+			// Execute statement
+			_, err = stmt.Exec(2, todo, 0)
+			if err != nil {
+				panic(err.Error())
+			}
+
+			defer stmt.Close()
+
+			fmt.Fprintf(w, "%s has been added to your TODO-list.\n", todo)
+		}
 	} else {
-		// Connect to db
-		db, err := sql.Open("mysql", DbConn())
-
-		if err != nil {
-			fmt.Fprintf(w, "An error occured when connecting to database.")
-			return
-		}
-
-		defer db.Close()
-
-		// Prepare statement
-		stmt, err := db.Prepare("INSERT INTO todo_list(user_id, todo, is_completed) VALUES(?, ?, ?)")
-		if err != nil {
-			panic(err.Error())
-		}
-
-		// Execute statement
-		_, err = stmt.Exec(2, todo, 0)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		defer stmt.Close()
-
-		fmt.Fprintf(w, "%s has been added to your TODO-list.\n", todo)
+		log.AuthMsg(w)
 	}
 }
 
 // Mark a task as completed in list
 func Mark(w http.ResponseWriter, r *http.Request) {
-	// Extract value of todo key from request param
-	todo := r.URL.Query().Get("todo")
-	is_completed := r.URL.Query().Get("is_completed")
+	if log.IsAuth {
+		// Extract value of todo key from request param
+		todo := r.URL.Query().Get("todo")
+		is_completed := r.URL.Query().Get("is_completed")
 
-	// Check for empty value otherwise edit data in db
-	if todo == "" {
-		fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
-	} else {
-		// Connect to db
-		db, err := sql.Open("mysql", DbConn())
+		// Check for empty value otherwise edit data in db
+		if todo == "" {
+			fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
+		} else {
+			// Connect to db
+			db, err := sql.Open("mysql", DbConn())
 
-		if err != nil {
-			fmt.Fprintf(w, "An error occured when connecting to database.")
-			return
-		}
+			if err != nil {
+				fmt.Fprintf(w, "An error occured when connecting to database.")
+				return
+			}
 
-		defer db.Close()
+			defer db.Close()
 
-		// Query data to check if the data exist then only we proceed to edit it
-		slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
-		if err != nil {
-			panic(err.Error())
-		}
-
-		defer slt_stmt.Close()
-
-		rows, err := slt_stmt.Query(2, todo)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		defer rows.Close()
-
-		var length int
-		for rows.Next() {
-			err := rows.Scan(&length)
+			// Query data to check if the data exist then only we proceed to edit it
+			slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
 			if err != nil {
 				panic(err.Error())
 			}
-			if length > 0 {
-				// Prepare statement
-				stmt, err := db.Prepare("UPDATE todo_list SET is_completed = ? WHERE user_id = ? AND todo = ?")
+
+			defer slt_stmt.Close()
+
+			rows, err := slt_stmt.Query(2, todo)
+			if err != nil {
+				panic(err.Error())
+			}
+
+			defer rows.Close()
+
+			var length int
+			for rows.Next() {
+				err := rows.Scan(&length)
 				if err != nil {
 					panic(err.Error())
 				}
+				if length > 0 {
+					// Prepare statement
+					stmt, err := db.Prepare("UPDATE todo_list SET is_completed = ? WHERE user_id = ? AND todo = ?")
+					if err != nil {
+						panic(err.Error())
+					}
 
-				// Execute statement
-				_, err = stmt.Exec(is_completed, 2, todo)
-				if err != nil {
-					panic(err.Error())
+					// Execute statement
+					_, err = stmt.Exec(is_completed, 2, todo)
+					if err != nil {
+						panic(err.Error())
+					}
+
+					defer stmt.Close()
+
+					fmt.Fprintf(w, "%s in your TODO-list has been updated to %s.\n", todo, is_completed)
+				} else {
+					fmt.Fprintf(w, "%s is not in your TODO-list.\n", todo)
 				}
-
-				defer stmt.Close()
-
-				fmt.Fprintf(w, "%s in your TODO-list has been updated to %s.\n", todo, is_completed)
-			} else {
-				fmt.Fprintf(w, "%s is not in your TODO-list.\n", todo)
 			}
 		}
+	} else {
+		log.AuthMsg(w)
 	}
 }
 
 // Delete task from list
 func Delete(w http.ResponseWriter, r *http.Request) {
-	// Extract value of todo key from request param
-	todo := r.URL.Query().Get("todo")
+	if log.IsAuth {
+		// Extract value of todo key from request param
+		todo := r.URL.Query().Get("todo")
 
-	// Check for empty value otherwise delete data to db
-	if todo == "" {
-		fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
-	} else {
-		// Connect to db
-		db, err := sql.Open("mysql", DbConn())
+		// Check for empty value otherwise delete data to db
+		if todo == "" {
+			fmt.Fprintf(w, "Invalid task, try adding a task by invoking ?todo={your task} at the end of the api path.\n")
+		} else {
+			// Connect to db
+			db, err := sql.Open("mysql", DbConn())
 
-		if err != nil {
-			fmt.Fprintf(w, "An error occured when connecting to database.")
-			return
-		}
+			if err != nil {
+				fmt.Fprintf(w, "An error occured when connecting to database.")
+				return
+			}
 
-		defer db.Close()
+			defer db.Close()
 
-		// Query data to check if the data exist then only we proceed to delete it
-		slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
-		if err != nil {
-			panic(err.Error())
-		}
-
-		defer slt_stmt.Close()
-
-		rows, err := slt_stmt.Query(2, todo)
-		if err != nil {
-			panic(err.Error())
-		}
-
-		defer rows.Close()
-
-		var length int
-		for rows.Next() {
-			err := rows.Scan(&length)
+			// Query data to check if the data exist then only we proceed to delete it
+			slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
 			if err != nil {
 				panic(err.Error())
 			}
-			if length > 0 {
-				// Prepare statement
-				del_stmt, err := db.Prepare("DELETE FROM todo_list WHERE user_id = ? AND todo = ?")
+
+			defer slt_stmt.Close()
+
+			rows, err := slt_stmt.Query(2, todo)
+			if err != nil {
+				panic(err.Error())
+			}
+
+			defer rows.Close()
+
+			var length int
+			for rows.Next() {
+				err := rows.Scan(&length)
 				if err != nil {
 					panic(err.Error())
 				}
+				if length > 0 {
+					// Prepare statement
+					del_stmt, err := db.Prepare("DELETE FROM todo_list WHERE user_id = ? AND todo = ?")
+					if err != nil {
+						panic(err.Error())
+					}
 
-				// Execute statement
-				_, err = del_stmt.Exec("2", todo)
-				if err != nil {
-					panic(err.Error())
+					// Execute statement
+					_, err = del_stmt.Exec("2", todo)
+					if err != nil {
+						panic(err.Error())
+					}
+
+					defer del_stmt.Close()
+
+					fmt.Fprintf(w, "%s has been removed from your TODO-list.\n", todo)
+				} else {
+					fmt.Fprintf(w, "%s is not in your TODO-list.\n", todo)
 				}
-
-				defer del_stmt.Close()
-
-				fmt.Fprintf(w, "%s has been removed from your TODO-list.\n", todo)
-			} else {
-				fmt.Fprintf(w, "%s is not in your TODO-list.\n", todo)
 			}
 		}
+	} else {
+		log.AuthMsg(w)
 	}
 }
