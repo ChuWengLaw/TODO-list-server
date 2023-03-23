@@ -30,24 +30,40 @@ func List(w http.ResponseWriter, r *http.Request) {
 		defer db.Close()
 
 		// Query data
-		rows, err := db.Query("SELECT * FROM todo_list")
+		slt_stmt, err := db.Prepare("SELECT * FROM todo_list WHERE user_id = ?")
 		if err != nil {
-			panic(err.Error())
+			fmt.Fprintf(w, "An error occured when querying data.")
+			return
 		}
 
-		defer rows.Close()
+		defer slt_stmt.Close()
 
-		// Extract data
-		var id int
-		var user_id int
-		var todo string
-		var is_completed int
-		for rows.Next() {
-			err := rows.Scan(&id, &user_id, &todo, &is_completed)
-			if err != nil {
-				panic(err.Error())
+		rows, err := slt_stmt.Query(log.User_id)
+		check_empty, err2 := slt_stmt.Query(log.User_id)
+		if err != nil {
+			fmt.Fprintf(w, "An error occured when executing statement.")
+			return
+		}
+		if err2 != nil {
+			fmt.Fprintf(w, "An error occured when executing statement.")
+			return
+		}
+
+		if check_empty.Next() {
+			// Extract data
+			var id int
+			var user_id int
+			var todo string
+			var is_completed int
+			for rows.Next() {
+				err := rows.Scan(&id, &user_id, &todo, &is_completed)
+				if err != nil {
+					fmt.Fprintf(w, "An error occured when scanning row.")
+				}
+				fmt.Fprintf(w, "User Id: %d, TODO: %s, Is Completed: %d\n", user_id, todo, is_completed)
 			}
-			fmt.Fprintf(w, "id: %d, user_id: %d, todo: %s, is_completed: %d\n", id, user_id, todo, is_completed)
+		} else {
+			fmt.Fprintf(w, "Your TODO-list is empty, try adding a task by calling http://localhost:8080/Add?todo={your_task}")
 		}
 	} else {
 		log.AuthMsg(w)
@@ -77,13 +93,15 @@ func Add(w http.ResponseWriter, r *http.Request) {
 			// Prepare statement
 			stmt, err := db.Prepare("INSERT INTO todo_list(user_id, todo, is_completed) VALUES(?, ?, ?)")
 			if err != nil {
-				panic(err.Error())
+				fmt.Fprintf(w, "An error occured when preparing statement.")
+				return
 			}
 
 			// Execute statement
-			_, err = stmt.Exec(2, todo, 0)
+			_, err = stmt.Exec(log.User_id, todo, 0)
 			if err != nil {
-				panic(err.Error())
+				fmt.Fprintf(w, "An error occured when executing statement.")
+				return
 			}
 
 			defer stmt.Close()
@@ -119,14 +137,16 @@ func Mark(w http.ResponseWriter, r *http.Request) {
 			// Query data to check if the data exist then only we proceed to edit it
 			slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
 			if err != nil {
-				panic(err.Error())
+				fmt.Fprintf(w, "An error occured when preparing statement.")
+				return
 			}
 
 			defer slt_stmt.Close()
 
-			rows, err := slt_stmt.Query(2, todo)
+			rows, err := slt_stmt.Query(log.User_id, todo)
 			if err != nil {
-				panic(err.Error())
+				fmt.Fprintf(w, "An error occured when executing statement.")
+				return
 			}
 
 			defer rows.Close()
@@ -135,19 +155,19 @@ func Mark(w http.ResponseWriter, r *http.Request) {
 			for rows.Next() {
 				err := rows.Scan(&length)
 				if err != nil {
-					panic(err.Error())
+					fmt.Fprintf(w, "An error occured when scanning row.")
 				}
 				if length > 0 {
 					// Prepare statement
 					stmt, err := db.Prepare("UPDATE todo_list SET is_completed = ? WHERE user_id = ? AND todo = ?")
 					if err != nil {
-						panic(err.Error())
+						fmt.Fprintf(w, "An error occured when preparing statement.")
 					}
 
 					// Execute statement
-					_, err = stmt.Exec(is_completed, 2, todo)
+					_, err = stmt.Exec(is_completed, log.User_id, todo)
 					if err != nil {
-						panic(err.Error())
+						fmt.Fprintf(w, "An error occured when executing statement.")
 					}
 
 					defer stmt.Close()
@@ -186,14 +206,16 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 			// Query data to check if the data exist then only we proceed to delete it
 			slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM todo_list WHERE user_id = ? AND todo = ?")
 			if err != nil {
-				panic(err.Error())
+				fmt.Fprintf(w, "An error occured when preparing statement.")
+				return
 			}
 
 			defer slt_stmt.Close()
 
-			rows, err := slt_stmt.Query(2, todo)
+			rows, err := slt_stmt.Query(log.User_id, todo)
 			if err != nil {
-				panic(err.Error())
+				fmt.Fprintf(w, "An error occured when executing statement.")
+				return
 			}
 
 			defer rows.Close()
@@ -202,19 +224,19 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 			for rows.Next() {
 				err := rows.Scan(&length)
 				if err != nil {
-					panic(err.Error())
+					fmt.Fprintf(w, "An error occured when scanning row.")
 				}
 				if length > 0 {
 					// Prepare statement
 					del_stmt, err := db.Prepare("DELETE FROM todo_list WHERE user_id = ? AND todo = ?")
 					if err != nil {
-						panic(err.Error())
+						fmt.Fprintf(w, "An error occured when preparing statement.")
 					}
 
 					// Execute statement
-					_, err = del_stmt.Exec("2", todo)
+					_, err = del_stmt.Exec(log.User_id, todo)
 					if err != nil {
-						panic(err.Error())
+						fmt.Fprintf(w, "An error occured when executing statement.")
 					}
 
 					defer del_stmt.Close()
