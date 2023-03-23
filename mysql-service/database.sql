@@ -1,13 +1,11 @@
-CREATE DATABASE todo;
 USE todo;
 
 CREATE TABLE `users` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `token` varchar(100) NOT NULL,
   `user_name` varchar(45) NOT NULL,
   `create_time` datetime NOT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `token_UNIQUE` (`token`)
+  UNIQUE KEY `user_name_UNIQUE` (`user_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `todo_list` (

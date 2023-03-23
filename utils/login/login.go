@@ -123,7 +123,7 @@ func googleAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	fmt.Fprintf(w, "You have successfully logged in as: %v\n", tokenInfo.Email)
 	fmt.Fprintf(w, "Expiration time: %v seconds\n", tokenInfo.ExpiresIn)
 	welcomeMsg(w)
-	InsertUser(w, code, strings.Split(tokenInfo.Email, "@")[0])
+	InsertUser(w, strings.Split(tokenInfo.Email, "@")[0])
 }
 
 func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
@@ -173,7 +173,7 @@ func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	IsAuth = true
 	fmt.Fprintf(w, "You have successfully logged in as: %s\n", graphResp["name"])
 	welcomeMsg(w)
-	InsertUser(w, code, fmt.Sprint(graphResp["name"]))
+	InsertUser(w, fmt.Sprint(graphResp["name"]))
 }
 
 func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
@@ -217,7 +217,7 @@ func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	IsAuth = true
 	fmt.Fprintf(w, "You have successfully logged in as: (%s)\n", user.Login)
 	welcomeMsg(w)
-	InsertUser(w, code, user.Login)
+	InsertUser(w, user.Login)
 }
 
 // helper function to redirect respective auths
@@ -276,7 +276,7 @@ func welcomeMsg(w http.ResponseWriter) {
 	fmt.Fprintf(w, "4. Delete\n")
 }
 
-func InsertUser(w http.ResponseWriter, code string, username string) {
+func InsertUser(w http.ResponseWriter, username string) {
 	// Connect to db
 	db_settings := fmt.Sprintf("%s:%s@%s/%s", d.DbSettings()["user"], d.DbSettings()["pw"], d.DbSettings()["conn"], d.DbSettings()["schema"])
 	db, err := sql.Open("mysql", db_settings)
@@ -288,7 +288,7 @@ func InsertUser(w http.ResponseWriter, code string, username string) {
 	defer db.Close()
 
 	// Query data to check if the user exist then only we proceed to add user
-	slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM users WHERE token = ?")
+	slt_stmt, err := db.Prepare("SELECT COUNT(id) AS length FROM users WHERE user_name = ?")
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when preparing statement.")
 		return
@@ -296,7 +296,7 @@ func InsertUser(w http.ResponseWriter, code string, username string) {
 
 	defer slt_stmt.Close()
 
-	rows, err := slt_stmt.Query(code)
+	rows, err := slt_stmt.Query(username)
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when executing statement.")
 		return
@@ -313,13 +313,13 @@ func InsertUser(w http.ResponseWriter, code string, username string) {
 		}
 		if length <= 0 {
 			// Prepare statement
-			insert_stmt, err := db.Prepare("INSERT INTO users(token, user_name, create_time) VALUES(?, ?, ?)")
+			insert_stmt, err := db.Prepare("INSERT INTO users(user_name, create_time) VALUES(?, ?)")
 			if err != nil {
 				fmt.Fprintf(w, "An error occured when preparing statement.")
 			}
 
 			// Execute statement
-			_, err = insert_stmt.Exec(code, username, time.Now().Format("2006-01-02 15:04:05"))
+			_, err = insert_stmt.Exec(username, time.Now().Format("2006-01-02 15:04:05"))
 			if err != nil {
 				fmt.Fprintf(w, "An error occured when executing statement.")
 			}
@@ -329,7 +329,7 @@ func InsertUser(w http.ResponseWriter, code string, username string) {
 	}
 
 	// Query for user_id
-	find_user_id, err := db.Prepare("SELECT * FROM users WHERE token = ?")
+	find_user_id, err := db.Prepare("SELECT * FROM users WHERE user_name = ?")
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when preparing statement.")
 		return
@@ -337,7 +337,7 @@ func InsertUser(w http.ResponseWriter, code string, username string) {
 
 	defer find_user_id.Close()
 
-	user_ids, err := find_user_id.Query(code)
+	user_ids, err := find_user_id.Query(username)
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when executing statement.")
 		return
@@ -345,11 +345,10 @@ func InsertUser(w http.ResponseWriter, code string, username string) {
 
 	// Extract data
 	var id int
-	var token string
 	var user_name string
 	var create_time string
 	for user_ids.Next() {
-		err := user_ids.Scan(&id, &token, &user_name, &create_time)
+		err := user_ids.Scan(&id, &user_name, &create_time)
 		if err != nil {
 			fmt.Fprintf(w, "An error occured when scanning row.")
 		}

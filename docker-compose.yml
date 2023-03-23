@@ -7,7 +7,7 @@ services:
     depends_on:
       - db
   db:
-    image: mysql:latest
+    image: fluffypyjamas/todo-db:demo
     environment:
       MYSQL_ROOT_PASSWORD: 123456
       MYSQL_DATABASE: todo
