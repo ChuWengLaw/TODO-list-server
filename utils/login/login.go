@@ -241,7 +241,7 @@ func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool {
 // helper function to redirect respective auths
 func authorizeUser(w http.ResponseWriter, code string) {
 	if method == "1" {
-		googleAuth(w, gg_conf, "4/0AVHEtk5_uCq69rLWsCo4K25CkR6ZbAhGy0hjsesTN50MyIz6qPrc43R41yZdY3IIeZdo3g")
+		googleAuth(w, gg_conf, code)
 	} else if method == "2" {
 		facebookAuth(w, fb_conf, code)
 	} else if method == "3" {
