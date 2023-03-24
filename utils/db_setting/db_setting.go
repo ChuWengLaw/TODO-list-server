@@ -8,7 +8,7 @@ func DbSettings() map[string]string {
 	// Add some key-value pairs to the map
 	db["user"] = "user"
 	db["pw"] = "123456"
-	db["conn"] = "tcp(127.0.0.1:3306)"
+	db["conn"] = "tcp(todoDB)"
 	db["schema"] = "todo"
 	return db
 }
