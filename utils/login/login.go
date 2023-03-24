@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"net/url"
 	d "server/utils/db_setting"
@@ -19,9 +20,19 @@ import (
 )
 
 // Global variables
-var IsAuth bool = false
+var urlMap = make(map[uint32]string)
 var method string = ""
 var User_id int
+var gg_token string = ""
+var fb_token string = ""
+var git_token string = ""
+
+// Hash function
+func hash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
+}
 
 // Constants holder for Google OAuth2
 var (
@@ -45,6 +56,8 @@ var gg_conf = &oauth2.Config{
 func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	// Redirect the user to the Google authentication page.
 	url := gg_conf.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	short := hash(url)
+	urlMap[short] = url
 	fmt.Fprintf(w, "Visit the URL for obtaining the Google's OAuth code: %v\n", url)
 }
 
@@ -98,35 +111,36 @@ func handleGitHubLogin(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Visit the URL for obtaining the GitHub's OAuth code: %v\n", url)
 }
 
-func googleAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
+func googleAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool {
 	// Exchange authorization code for access token
 	token, err := conf.Exchange(context.Background(), code)
 	if err != nil {
 		fmt.Fprintf(w, "Invalid access token.\n")
 		AuthMsg(w)
-		return
+		return false
 	}
 	// Verify token with Google
 	client := conf.Client(context.Background(), token)
 	oauth2Service, err := gg_oauth.New(client)
 	if err != nil {
 		fmt.Fprintf(w, "Verification with Google failed.\nPlease login with other methods.\n")
-		return
+		return false
 	}
 	tokenInfo, err := oauth2Service.Tokeninfo().AccessToken(token.AccessToken).Do()
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when calling Tokeninfo API.\n")
-		return
+		return false
 	}
 	// Print the authenticated user's details.
-	IsAuth = true
 	fmt.Fprintf(w, "You have successfully logged in as: %v\n", tokenInfo.Email)
-	fmt.Fprintf(w, "Expiration time: %v seconds\n", tokenInfo.ExpiresIn)
+	fmt.Fprintf(w, "Token: %s\n", token.AccessToken)
+	gg_token = token.AccessToken
 	welcomeMsg(w)
 	InsertUser(w, strings.Split(tokenInfo.Email, "@")[0])
+	return true
 }
 
-func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
+func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool {
 	// Build the access token request
 	tokenURL := "https://graph.facebook.com/v12.0/oauth/access_token"
 	data := url.Values{}
@@ -139,7 +153,7 @@ func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	if err != nil {
 		fmt.Fprintf(w, "Invalid access token.\n")
 		AuthMsg(w)
-		return
+		return false
 	}
 	defer resp.Body.Close()
 	// Parse the access token response
@@ -147,14 +161,14 @@ func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	err = json.NewDecoder(resp.Body).Decode(&tokenResp)
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when parsing the access token response.\n")
-		return
+		return false
 	}
 	// Verify the access token by making a request to the Facebook Graph API
 	graphAPIURL := fmt.Sprintf("https://graph.facebook.com/me?access_token=%s", tokenResp.AccessToken)
 	resp, err = http.Get(graphAPIURL)
 	if err != nil {
 		fmt.Fprintf(w, "Verification with Facebook failed.\n")
-		return
+		return false
 	}
 	defer resp.Body.Close()
 	// Parse the response from the Facebook Graph API
@@ -162,27 +176,29 @@ func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	err = json.NewDecoder(resp.Body).Decode(&graphResp)
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when parsing the response from the Facebook Graph API.\n")
-		return
+		return false
 	}
 	// Check if the response contains an error message
 	if errorMessage, ok := graphResp["error"].(map[string]interface{}); ok {
 		fmt.Printf("Error: %s\n", errorMessage["message"])
-		return
+		return false
 	}
 	// Print the authenticated user's details.
-	IsAuth = true
 	fmt.Fprintf(w, "You have successfully logged in as: %s\n", graphResp["name"])
+	fmt.Fprintf(w, "Token: %s\n", tokenResp.AccessToken)
+	fb_token = tokenResp.AccessToken
 	welcomeMsg(w)
 	InsertUser(w, fmt.Sprint(graphResp["name"]))
+	return true
 }
 
-func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
+func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool {
 	// Exchange the authorization code for an access token.
 	token, err := conf.Exchange(context.Background(), code)
 	if err != nil {
 		fmt.Fprintf(w, "Invalid access token.\n")
 		AuthMsg(w)
-		return
+		return false
 	}
 	// Create a new HTTP client with the access token.
 	client := conf.Client(context.Background(), token)
@@ -190,17 +206,17 @@ func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {
 		fmt.Fprintf(w, "Invalid client request.\n")
-		return
+		return false
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(w, "Invalid client request.\n")
-		return
+		return false
 	}
 	// Check if the request was successful.
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintf(w, "API request failed with status code %v", resp.StatusCode)
-		return
+		return false
 	}
 	// Parse the response body to get the authenticated user's details.
 	defer resp.Body.Close()
@@ -211,19 +227,21 @@ func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		fmt.Fprintf(w, "An error occured when decoding the data.\n")
-		return
+		return false
 	}
 	// Print the authenticated user's details.
-	IsAuth = true
 	fmt.Fprintf(w, "You have successfully logged in as: (%s)\n", user.Login)
+	fmt.Fprintf(w, "Token: %s\n", token.AccessToken)
+	git_token = token.AccessToken
 	welcomeMsg(w)
 	InsertUser(w, user.Login)
+	return true
 }
 
 // helper function to redirect respective auths
 func authorizeUser(w http.ResponseWriter, code string) {
 	if method == "1" {
-		googleAuth(w, gg_conf, code)
+		googleAuth(w, gg_conf, "4/0AVHEtk5_uCq69rLWsCo4K25CkR6ZbAhGy0hjsesTN50MyIz6qPrc43R41yZdY3IIeZdo3g")
 	} else if method == "2" {
 		facebookAuth(w, fb_conf, code)
 	} else if method == "3" {
@@ -256,6 +274,25 @@ func SignIn(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "Please select a valid authentication method: 1. Google, 2. Facebook, 3. GitHub\n")
 		}
 	}
+}
+
+// Check for valid access token
+func CheckCurlHeader(w http.ResponseWriter, r *http.Request) bool {
+	token := r.Header.Get("token")
+	var IsAuth bool = false
+	if token != "" {
+		if gg_token == token {
+			IsAuth = true
+		} else if fb_token == token {
+			IsAuth = true
+		} else if git_token == token {
+			IsAuth = true
+		} else {
+			fmt.Fprintf(w, "Invalid token, please login to gain access. %s\n", token)
+			IsAuth = false
+		}
+	}
+	return IsAuth
 }
 
 // messages

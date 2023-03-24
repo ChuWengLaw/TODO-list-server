@@ -18,7 +18,8 @@ func DbConn() string {
 
 // List all user's tasks
 func List(w http.ResponseWriter, r *http.Request) {
-	if log.IsAuth {
+	// Check for curl header
+	if log.CheckCurlHeader(w, r) {
 		// Connect to db
 		db, err := sql.Open("mysql", DbConn())
 
@@ -72,7 +73,8 @@ func List(w http.ResponseWriter, r *http.Request) {
 
 // Add task to list
 func Add(w http.ResponseWriter, r *http.Request) {
-	if log.IsAuth {
+	// Check for curl header
+	if log.CheckCurlHeader(w, r) {
 		// Extract value of todo key from request param
 		todo := r.URL.Query().Get("todo")
 
@@ -115,7 +117,8 @@ func Add(w http.ResponseWriter, r *http.Request) {
 
 // Mark a task as completed in list
 func Mark(w http.ResponseWriter, r *http.Request) {
-	if log.IsAuth {
+	// Check for curl header
+	if log.CheckCurlHeader(w, r) {
 		// Extract value of todo key from request param
 		todo := r.URL.Query().Get("todo")
 		is_completed := r.URL.Query().Get("is_completed")
@@ -185,7 +188,8 @@ func Mark(w http.ResponseWriter, r *http.Request) {
 
 // Delete task from list
 func Delete(w http.ResponseWriter, r *http.Request) {
-	if log.IsAuth {
+	// Check for curl header
+	if log.CheckCurlHeader(w, r) {
 		// Extract value of todo key from request param
 		todo := r.URL.Query().Get("todo")
 
