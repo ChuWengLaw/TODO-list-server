@@ -121,7 +121,6 @@ func Mark(w http.ResponseWriter, r *http.Request) {
 	if log.CheckCurlHeader(w, r) {
 		// Extract value of todo key from request param
 		todo := r.URL.Query().Get("todo")
-		is_completed := r.URL.Query().Get("is_completed")
 
 		// Check for empty value otherwise edit data in db
 		if todo == "" {
@@ -162,20 +161,20 @@ func Mark(w http.ResponseWriter, r *http.Request) {
 				}
 				if length > 0 {
 					// Prepare statement
-					stmt, err := db.Prepare("UPDATE todo_list SET is_completed = ? WHERE user_id = ? AND todo = ?")
+					stmt, err := db.Prepare("UPDATE todo_list SET is_completed = 1 WHERE user_id = ? AND todo = ?")
 					if err != nil {
 						fmt.Fprintf(w, "An error occured when preparing statement.")
 					}
 
 					// Execute statement
-					_, err = stmt.Exec(is_completed, log.User_id, todo)
+					_, err = stmt.Exec(log.User_id, todo)
 					if err != nil {
 						fmt.Fprintf(w, "An error occured when executing statement.")
 					}
 
 					defer stmt.Close()
 
-					fmt.Fprintf(w, "%s in your TODO-list has been updated to %s.\n", todo, is_completed)
+					fmt.Fprintf(w, "%s in your TODO-list has been updated to 1.\n", todo)
 				} else {
 					fmt.Fprintf(w, "%s is not in your TODO-list.\n", todo)
 				}
