@@ -25,5 +25,6 @@ A simple TODO-list server, where users can :-
 # Upon server running
 ## Login to copy your access token
 **curl -g -v http://localhost:8080/Login?method={1/2/3}**
-## Invoke the following command to get an appropriate response object for each of the APIs
-**curl -H @{'token' = 'your_token'} -g -v http://localhost:8080/(Add/Delete/List/Mark-complete)?params**
+## Invoke the following command to get an appropriate response object for each of the APIs depending on your system
+**(powershell) curl -H @{'token' = 'your_token'} -v http://localhost:8080/(Add/Delete/List/Mark-complete)?params**
+**(cmd) curl -H 'token: your_token' -g -v http://localhost:8080/(Add/Delete/List/Mark-complete)?params**

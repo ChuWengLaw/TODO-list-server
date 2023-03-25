@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"net/http"
 	"net/url"
 	d "server/utils/db_setting"
@@ -20,20 +19,10 @@ import (
 )
 
 // Global variables
-var urlMap = make(map[uint32]string)
 var method string = ""
 var User_id int
-var gg_token string = ""
-var fb_token string = ""
-var git_token string = ""
 
-// Hash function
-func hash(s string) uint32 {
-	h := fnv.New32a()
-	h.Write([]byte(s))
-	return h.Sum32()
-}
-
+/******************** Obtain Access Token with Authorisation Codes ********************/
 // Constants holder for Google OAuth2
 var (
 	googleClientID     = "144575449170-njifilpn4vuu5ujmst66qctf5g1uufg5.apps.googleusercontent.com"
@@ -56,8 +45,6 @@ var gg_conf = &oauth2.Config{
 func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
 	// Redirect the user to the Google authentication page.
 	url := gg_conf.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	short := hash(url)
-	urlMap[short] = url
 	fmt.Fprintf(w, "Visit the URL for obtaining the Google's OAuth code: %v\n", url)
 }
 
@@ -134,7 +121,6 @@ func googleAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool {
 	// Print the authenticated user's details.
 	fmt.Fprintf(w, "You have successfully logged in as: %v\n", tokenInfo.Email)
 	fmt.Fprintf(w, "Token: %s\n", token.AccessToken)
-	gg_token = token.AccessToken
 	welcomeMsg(w)
 	InsertUser(w, strings.Split(tokenInfo.Email, "@")[0])
 	return true
@@ -157,7 +143,10 @@ func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool 
 	}
 	defer resp.Body.Close()
 	// Parse the access token response
-	var tokenResp AccessTokenResponse
+	var tokenResp struct {
+		AccessToken string `json:"access_token"`
+		Error       string `json:"error"`
+	}
 	err = json.NewDecoder(resp.Body).Decode(&tokenResp)
 	if err != nil {
 		fmt.Fprintf(w, "An error occured when parsing the access token response.\n")
@@ -186,7 +175,6 @@ func facebookAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool 
 	// Print the authenticated user's details.
 	fmt.Fprintf(w, "You have successfully logged in as: %s\n", graphResp["name"])
 	fmt.Fprintf(w, "Token: %s\n", tokenResp.AccessToken)
-	fb_token = tokenResp.AccessToken
 	welcomeMsg(w)
 	InsertUser(w, fmt.Sprint(graphResp["name"]))
 	return true
@@ -232,10 +220,60 @@ func githubAuth(w http.ResponseWriter, conf *oauth2.Config, code string) bool {
 	// Print the authenticated user's details.
 	fmt.Fprintf(w, "You have successfully logged in as: (%s)\n", user.Login)
 	fmt.Fprintf(w, "Token: %s\n", token.AccessToken)
-	git_token = token.AccessToken
 	welcomeMsg(w)
 	InsertUser(w, user.Login)
 	return true
+}
+
+/******************** Verify Token form Header ********************/
+func verifyAccessToken(method int, token string) bool {
+	// Create a new HTTP request to the debug_token endpoint
+	var url string
+	if method == 1 {
+		url = fmt.Sprintf("https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=%s", token)
+	} else if method == 2 {
+		url = fmt.Sprintf("https://graph.facebook.com/me?access_token=%s", token)
+	} else if method == 3 {
+		url = "https://api.github.com/user"
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false
+	}
+
+	if method == 3 {
+		req.Header.Set("Authorization", fmt.Sprintf("token %s", token))
+	}
+
+	// Send the HTTP request and check the response status code
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("API request failed with status code %d", resp.StatusCode)
+		return false
+	}
+
+	// The access token is valid
+	return true
+}
+
+func CheckCurlHeader(w http.ResponseWriter, r *http.Request) bool {
+	token := r.Header.Get("token")
+	var IsAuth bool = false
+	if token != "" {
+		if verifyAccessToken(1, token) || verifyAccessToken(2, token) || verifyAccessToken(3, token) {
+			IsAuth = true
+		} else {
+			fmt.Fprintf(w, "Invalid token, please login to gain access. %s\n", token)
+			IsAuth = false
+		}
+	}
+	return IsAuth
 }
 
 // helper function to redirect respective auths
@@ -276,26 +314,7 @@ func SignIn(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Check for valid access token
-func CheckCurlHeader(w http.ResponseWriter, r *http.Request) bool {
-	token := r.Header.Get("token")
-	var IsAuth bool = false
-	if token != "" {
-		if gg_token == token {
-			IsAuth = true
-		} else if fb_token == token {
-			IsAuth = true
-		} else if git_token == token {
-			IsAuth = true
-		} else {
-			fmt.Fprintf(w, "Invalid token, please login to gain access. %s\n", token)
-			IsAuth = false
-		}
-	}
-	return IsAuth
-}
-
-// messages
+/******************** Messages ********************/
 func AuthMsg(w http.ResponseWriter) {
 	fmt.Fprintf(w, "Please login to gain access to the server.\n")
 	fmt.Fprintf(w, "You can use http://localhost:8080/Login?method={auth_type} to get the authentication tokens that can be passed in via Authorization header or as part of the POST body.\n")
@@ -305,7 +324,6 @@ func AuthMsg(w http.ResponseWriter) {
 	fmt.Fprintf(w, "3. GitHub\n")
 }
 
-// messages
 func welcomeMsg(w http.ResponseWriter) {
 	fmt.Fprintf(w, "You are authorized to use http://localhost:8080/{path}\n")
 	fmt.Fprintf(w, "Below are 4 of the available paths:-\n")
@@ -315,6 +333,7 @@ func welcomeMsg(w http.ResponseWriter) {
 	fmt.Fprintf(w, "4. Delete\n")
 }
 
+/******************** Register New User ********************/
 func InsertUser(w http.ResponseWriter, username string) {
 	// Connect to db
 	db_settings := fmt.Sprintf("%s:%s@%s/%s", d.DbSettings()["user"], d.DbSettings()["pw"], d.DbSettings()["conn"], d.DbSettings()["schema"])
